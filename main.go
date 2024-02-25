@@ -20,7 +20,7 @@ func main() {
 	defer db.Close()
 
 	// Получение списка заказов из аргументов командной строки
-	orders := []string{"10", "11", "14", "15"}
+	orders := os.Args[1:]
 	if len(orders) == 0 {
 		fmt.Println("No order numbers provided.")
 		os.Exit(1)
@@ -28,17 +28,19 @@ func main() {
 
 	// Формирование запроса к базе данных
 	query := fmt.Sprintf(`
-        SELECT p.name, o.count, o.order_id, p.product_id, m.main, s.shelf_name, s.shelf_id
-        FROM Orders o
-        JOIN products p ON o.product_id = p.product_id
-        JOIN shelf_product m ON o.product_id = m.product_id
+	    SELECT p.name, o.count, o.order_id, p.product_id, m.main, s.shelf_name, s.shelf_id
+	    FROM Orders o
+	    JOIN products p ON o.product_id = p.product_id
+	    JOIN shelf_product m ON o.product_id = m.product_id
 		JOIN shelves s ON m.shelf_id = s.shelf_id
-        WHERE o.order_id IN (%s)
-        ORDER BY m.main DESC, m.shelf_id, p.name;
-    `, strings.Join(orders, ","))
+	    WHERE o.order_id IN (%s)
+	    ORDER BY m.main DESC, m.shelf_id, p.name;
+	`, strings.Join(orders, ","))
+
+	// query, err := ioutil.ReadFile("./sql/products.sql")
 
 	// Выполнение запроса к базе данных
-	rows, err := db.Query(query)
+	rows, err := db.Query(string(query))
 	if err != nil {
 		fmt.Println("Error executing query:", err)
 		os.Exit(1)
@@ -53,35 +55,31 @@ func main() {
 		product_id int
 		main       bool
 		shelf_name string
-		shelf_id int
+		shelf_id   int
 	)
-	// currentShelf := ""
+
 	fmt.Println("=+=+=+=")
 	fmt.Println("Страница сборки заказов", strings.Join(orders, ","))
+	var currentShelf = ""
 	for rows.Next() {
 		err := rows.Scan(&name, &count, &order_id, &product_id, &main, &shelf_name, &shelf_id)
 		if err != nil {
 			fmt.Println("Error scanning row:", err)
 			continue
 		}
-		if main  {
-			fmt.Printf("\n===Стеллаж %s\n", shelf_name)
-			fmt.Printf("%s (id=%d)\nзаказ %d, %d шт", name, product_id, order_id, count)
-		}
 
-		// if currentShelf != "" && currentShelf != fmt.Sprintf("%c", 65+product_id-1) {
-		// 	fmt.Println()
-		// }
-		// if currentShelf != fmt.Sprintf("%c", 65+product_id-1) {
-		// 	currentShelf = fmt.Sprintf("%c", 65+product_id-1)
-		// 	fmt.Printf("\n===Стеллаж %s\n", currentShelf)
-		// }
- 
-		if !main {
-			fmt.Print("\nдоп стеллаж: ")
-			//Получение дополнительных стеллажей
-			additionalShelves := getAdditionalShelves(db, order_id, name, shelf_id)
-			fmt.Print(additionalShelves)
+		if main {
+			if currentShelf != shelf_name {
+				currentShelf = shelf_name
+				fmt.Printf("\n===Стеллаж %s", shelf_name)
+			}
+
+			fmt.Printf("\n%s (id=%d)\nзаказ %d, %d шт", name, product_id, order_id, count)
+			fmt.Println()
+			additionalShelfs := getAdditionalShelvesF(product_id,order_id,db)
+			if len(additionalShelfs) > 0 {
+				fmt.Println("доп стеллаж: " + additionalShelfs[0])
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -89,17 +87,16 @@ func main() {
 	}
 }
 
-// Функция для получения дополнительных стеллажей
-func getAdditionalShelves(db *sql.DB, order_id int, name string, shelf_id int) []string {
+func getAdditionalShelvesF(product_id, order_id int, db *sql.DB) []string {
 	var additionalShelves []string
 	query := fmt.Sprintf(`
         SELECT m.shelf_id, s.shelf_name
-        FROM Orders o
-        JOIN Products p ON o.product_id = p.product_id
+        FROM orders o
+        JOIN products p ON o.product_id = p.product_id
         JOIN shelf_product m ON o.product_id = m.product_id
-        JOIN Shelves s ON m.shelf_id = s.shelf_id
-        WHERE o.order_id = %d AND p.name = '%s' AND m.shelf_id != %d;
-    `, order_id, name, shelf_id)
+        JOIN shelves s ON m.shelf_id = s.shelf_id
+        WHERE o.order_id = %d AND m.main != true AND p.product_id = %d;
+    `, order_id, product_id)
 	rows, err := db.Query(query)
 	if err != nil {
 		fmt.Println("Error executing query:", err)
@@ -108,13 +105,13 @@ func getAdditionalShelves(db *sql.DB, order_id int, name string, shelf_id int) [
 	defer rows.Close()
 	for rows.Next() {
 		var shelf_id int
-		var shelf_name string
-		err := rows.Scan(&shelf_id, &shelf_name)
+		var name string
+		err := rows.Scan(&shelf_id, &name)
 		if err != nil {
 			fmt.Println("Error scanning row:", err)
 			continue
 		}
-		additionalShelves = append(additionalShelves, fmt.Sprintf("%s (id=%d)", shelf_name, shelf_id))
+		additionalShelves = append(additionalShelves, fmt.Sprintf("%s", name))
 	}
 	if err := rows.Err(); err != nil {
 		fmt.Println("Error iterating rows:", err)
