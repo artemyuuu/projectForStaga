@@ -76,7 +76,7 @@ func main() {
 
 			fmt.Printf("\n%s (id=%d)\nзаказ %d, %d шт", name, product_id, order_id, count)
 			fmt.Println()
-			additionalShelfs := getAdditionalShelvesF(product_id,order_id,db)
+			additionalShelfs := getAdditionalShelvesF(product_id, order_id, db)
 			if len(additionalShelfs) > 0 {
 				fmt.Println("доп стеллаж: " + additionalShelfs[0])
 			}
